@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "College Ads Sorter",
+  "version": "1.0.0",
+  "description": "Classifies unread Gmail college marketing emails and moves junk to College Ads.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://YOUR_CLASSIFIER_ENDPOINT_HOST/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
