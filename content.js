@@ -1,247 +1,338 @@
-// content.js
+﻿// content.js
+// Keeps MailSift active while Gmail is open. It asks the background worker to
+// scan Gmail through the API, and also inspects visible Gmail rows as a fast UI aid.
 
-const COLLEGE_ADS_LABEL = "College Ads";
-const SCAN_INTERVAL_MS = 8000;
-const MAX_THREADS_PER_SCAN = 20;
+const STRONG_ROW_SIGNALS = [
+  "undergraduate",
+  "admissions",
+  "admission",
+  "apply now",
+  "prospectus",
+  "virtually visit",
+  "virtual visit",
+  "financial aid",
+  "campus tour",
+  "open house",
+  "information session",
+  "why attend",
+  "student panel",
+  "journey starts",
+  "frog camp"
+];
 
-const processedThreadIds = new Set();
+const COLLEGE_ROW_SIGNALS = [
+  "college",
+  "university",
+  "admission",
+  "admissions",
+  "undergraduate",
+  "drexel",
+  "creighton",
+  "usf",
+  "university of san francisco",
+  "tcu"
+];
 
-function textOf(node) {
-  return (node?.innerText || node?.textContent || "").trim();
+const SCAN_DEBOUNCE_MS = 350;
+const AUTO_SCAN_INTERVAL_MS = 60 * 1000;
+const AUTO_SCAN_MUTATION_DEBOUNCE_MS = 8000;
+const ROW_HIDDEN_CLASS = "inbox-noise-filter-hidden";
+
+const processedMessageIds = new Set();
+const pendingMessageIds = new Set();
+
+let scanTimer = null;
+let autoScanMutationTimer = null;
+
+function injectHiddenStyle() {
+  if (document.getElementById("inbox-noise-filter-style")) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = "inbox-noise-filter-style";
+  style.textContent = `
+    .${ROW_HIDDEN_CLASS} {
+      display: none !important;
+    }
+  `;
+  document.documentElement.appendChild(style);
 }
 
-function normalize(value) {
+function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function getThreadId(row) {
+function getRowSenderText(row) {
+  return normalizeText(
+    row.querySelector(".yW")?.innerText ||
+      row.querySelector("[email]")?.getAttribute("email") ||
+      row.querySelector("[name]")?.getAttribute("name") ||
+      ""
+  );
+}
+
+function getRowSubjectText(row) {
+  return normalizeText(
+    row.querySelector(".bog")?.innerText ||
+      row.querySelector("[role='link']")?.innerText ||
+      ""
+  );
+}
+
+function getRowSnippetText(row) {
+  return normalizeText(row.querySelector(".y2")?.innerText || row.textContent || "");
+}
+
+function includesAny(text, keywords) {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function getRowSnapshot(row) {
+  return {
+    sender: getRowSenderText(row),
+    subject: getRowSubjectText(row),
+    snippet: getRowSnippetText(row)
+  };
+}
+
+function shouldAnalyzeRow(row) {
+  const snapshot = getRowSnapshot(row);
+  const combinedText = normalizeText(
+    `${snapshot.sender} ${snapshot.subject} ${snapshot.snippet} ${row.innerText || row.textContent || ""}`
+  );
+
   return (
+    includesAny(combinedText, STRONG_ROW_SIGNALS) ||
+    includesAny(combinedText, COLLEGE_ROW_SIGNALS)
+  );
+}
+
+function getMessageIdFromRow(row) {
+  const directMessageId =
     row.getAttribute("data-legacy-message-id") ||
-    row.getAttribute("data-legacy-thread-id") ||
-    row.getAttribute("data-thread-id") ||
-    row.id ||
-    `${textOf(row).slice(0, 120)}`
-  );
-}
+    row.dataset?.legacyMessageId ||
+    row.getAttribute("data-message-id") ||
+    row.dataset?.messageId;
 
-function isUnreadThread(row) {
+  if (directMessageId) {
+    return directMessageId;
+  }
+
+  const nestedMessageNode = row.querySelector(
+    "[data-legacy-message-id], [data-message-id]"
+  );
+
   return (
-    row.classList.contains("zE") ||
-    row.getAttribute("aria-label")?.toLowerCase().includes("unread") ||
-    row.querySelector("[aria-label*='unread' i]")
+    nestedMessageNode?.getAttribute("data-legacy-message-id") ||
+    nestedMessageNode?.dataset?.legacyMessageId ||
+    nestedMessageNode?.getAttribute("data-message-id") ||
+    nestedMessageNode?.dataset?.messageId ||
+    null
   );
 }
 
-function hasPositiveGmailMarker(row, positiveWords, negativeWords) {
-  const selector = [
-    "[aria-label]",
-    "[data-tooltip]",
-    "[title]",
-    "[role='button']",
-    "[role='img']"
-  ].join(",");
+function findGmailMessageRows() {
+  const selectors = [
+    "tr[data-legacy-message-id]",
+    "tr.zA",
+    "div[role='main'] table tr",
+    "div[role='main'] [data-legacy-message-id]"
+  ];
 
-  const nodes = Array.from(row.querySelectorAll(selector));
+  const rows = new Set();
 
-  return nodes.some((node) => {
-    const values = [
-      node.getAttribute("aria-label"),
-      node.getAttribute("data-tooltip"),
-      node.getAttribute("title")
-    ].map(normalize);
-
-    return values.some((value) => {
-      if (!value) return false;
-      if (negativeWords.some((word) => value === word || value.includes(word))) {
-        return false;
+  selectors.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((node) => {
+      const row = node.closest("tr") || node;
+      if (row && document.body.contains(row)) {
+        rows.add(row);
       }
-      return positiveWords.some((word) => value === word || value.includes(word));
+    });
+  });
+
+  return Array.from(rows);
+}
+
+function hideRow(row) {
+  row.classList.add(ROW_HIDDEN_CLASS);
+  row.style.display = "none";
+}
+
+function restoreRow(row) {
+  row.classList.remove(ROW_HIDDEN_CLASS);
+  row.style.removeProperty("display");
+}
+
+function sendAnalyzeRequest(messageId, row) {
+  pendingMessageIds.add(messageId);
+
+  chrome.runtime.sendMessage(
+    {
+      action: "analyzeEmail",
+      messageId,
+      rowSnapshot: getRowSnapshot(row)
+    },
+    (response) => {
+      pendingMessageIds.delete(messageId);
+
+      if (chrome.runtime.lastError) {
+        console.error(
+          "[Inbox Noise Filter] Failed to contact background worker:",
+          chrome.runtime.lastError.message
+        );
+        restoreRow(row);
+        return;
+      }
+
+      if (!response?.success) {
+        console.error(
+          "[Inbox Noise Filter] Gmail analysis failed:",
+          response?.error || "Unknown error"
+        );
+        restoreRow(row);
+        return;
+      }
+
+      processedMessageIds.add(messageId);
+
+      if (response.moved) {
+        hideRow(row);
+        console.log(
+          `[Inbox Noise Filter] Moved message ${messageId} to College Ads: ${response.reason}`
+        );
+        return;
+      }
+
+      console.log(
+        `[Inbox Noise Filter] Kept message ${messageId}: ${response.reason}`
+      );
+    }
+  );
+}
+
+function processRow(row) {
+  const messageId = getMessageIdFromRow(row);
+
+  if (!messageId) {
+    return;
+  }
+
+  if (processedMessageIds.has(messageId) || pendingMessageIds.has(messageId)) {
+    return;
+  }
+
+  if (!shouldAnalyzeRow(row)) {
+    return;
+  }
+
+  console.log(
+    `[Inbox Noise Filter] Sending row ${messageId} for full-message analysis.`,
+    getRowSnapshot(row)
+  );
+  sendAnalyzeRequest(messageId, row);
+}
+
+function scanVisibleRows() {
+  try {
+    const rows = findGmailMessageRows();
+    rows.forEach(processRow);
+  } catch (error) {
+    console.error("[Inbox Noise Filter] DOM scan failed:", error);
+  }
+}
+
+function scheduleScan() {
+  window.clearTimeout(scanTimer);
+  scanTimer = window.setTimeout(scanVisibleRows, SCAN_DEBOUNCE_MS);
+}
+
+function requestAutoScan(reason = "manual") {
+  chrome.runtime.sendMessage({ action: "autoScanInbox", reason }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.warn(
+        "[Inbox Noise Filter] Auto scan request failed:",
+        chrome.runtime.lastError.message
+      );
+      return;
+    }
+
+    if (!response?.success) {
+      console.warn(
+        "[Inbox Noise Filter] Auto scan failed:",
+        response?.error || "Unknown error"
+      );
+      return;
+    }
+
+    if (response.skipped) {
+      console.log("[Inbox Noise Filter] Auto scan skipped:", response.skipReason);
+      return;
+    }
+
+    console.log("[Inbox Noise Filter] Auto scan complete:", {
+      reason,
+      scanned: response.scanned,
+      moved: response.moved,
+      kept: response.kept,
+      protected: response.protected,
+      failed: response.failed
     });
   });
 }
 
-function isStarred(row) {
-  return hasPositiveGmailMarker(row, ["starred"], ["not starred"]);
+function scheduleAutoScan(reason = "gmail-update") {
+  window.clearTimeout(autoScanMutationTimer);
+  autoScanMutationTimer = window.setTimeout(() => {
+    requestAutoScan(reason);
+  }, AUTO_SCAN_MUTATION_DEBOUNCE_MS);
 }
 
-function isImportant(row) {
-  return hasPositiveGmailMarker(row, ["important", "marked important"], ["not important", "mark as important"]);
+function startContinuousAutoScan() {
+  requestAutoScan("gmail-opened");
+  window.setInterval(() => {
+    if (document.visibilityState === "visible") {
+      requestAutoScan("gmail-open-poll");
+    }
+  }, AUTO_SCAN_INTERVAL_MS);
 }
 
-function isSafetyProtected(row) {
-  return isStarred(row) || isImportant(row);
-}
+function startObserver() {
+  if (!document.body) {
+    window.setTimeout(startObserver, 250);
+    return;
+  }
 
-function extractSender(row) {
-  return (
-    textOf(row.querySelector(".yW span[email]")) ||
-    row.querySelector(".yW span[email]")?.getAttribute("email") ||
-    textOf(row.querySelector("[email]")) ||
-    textOf(row.querySelector(".yW")) ||
-    ""
-  );
-}
+  injectHiddenStyle();
+  startContinuousAutoScan();
+  scanVisibleRows();
 
-function extractSubject(row) {
-  return (
-    textOf(row.querySelector(".bog")) ||
-    textOf(row.querySelector("[data-thread-id] .bog")) ||
-    textOf(row.querySelector("[role='link']")) ||
-    ""
-  );
-}
-
-function extractSnippet(row) {
-  return (
-    textOf(row.querySelector(".y2")) ||
-    textOf(row.querySelector(".a4W")) ||
-    textOf(row).slice(0, 500)
-  );
-}
-
-function extractThread(row) {
-  return {
-    threadId: getThreadId(row),
-    sender: extractSender(row),
-    subject: extractSubject(row),
-    snippet: extractSnippet(row)
-  };
-}
-
-function findInboxRows() {
-  return Array.from(document.querySelectorAll("tr.zA, div[role='main'] tr"));
-}
-
-function getUnreadUnprotectedThreads() {
-  return findInboxRows()
-    .filter(isUnreadThread)
-    .filter((row) => !isSafetyProtected(row))
-    .slice(0, MAX_THREADS_PER_SCAN)
-    .map((row) => ({ row, data: extractThread(row) }))
-    .filter(({ data }) => data.threadId && !processedThreadIds.has(data.threadId));
-}
-
-function selectThreadRow(row) {
-  const checkbox =
-    row.querySelector("[role='checkbox']") ||
-    row.querySelector("div[aria-label*='Select' i]") ||
-    row.querySelector(".oZ-jc");
-  if (!checkbox) return false;
-  checkbox.click();
-  return true;
-}
-
-function clickToolbarButton(labelPatterns) {
-  const buttons = Array.from(document.querySelectorAll("[role='button'], div[aria-label], div[data-tooltip]"));
-
-  const button = buttons.find((node) => {
-    const label = normalize(
-      node.getAttribute("aria-label") ||
-      node.getAttribute("data-tooltip") ||
-      node.getAttribute("title") ||
-      textOf(node)
+  const observer = new MutationObserver((mutations) => {
+    const hasRelevantChange = mutations.some(
+      (mutation) => mutation.addedNodes.length > 0 || mutation.type === "childList"
     );
 
-    return labelPatterns.some((pattern) => pattern.test(label));
-  });
-
-  if (!button) return false;
-  button.click();
-  return true;
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function applyCollegeAdsLabel() {
-  const opened = clickToolbarButton([
-    /^labels?$/,
-    /label/
-  ]);
-
-  if (!opened) return false;
-
-  await wait(400);
-
-  const menuItems = Array.from(document.querySelectorAll("[role='menuitem'], [role='option'], div[aria-label]"));
-  const labelItem = menuItems.find((node) => normalize(textOf(node)).includes(normalize(COLLEGE_ADS_LABEL)));
-
-  if (labelItem) {
-    labelItem.click();
-    await wait(200);
-
-    clickToolbarButton([/^apply$/, /^ok$/]);
-    return true;
-  }
-
-  console.warn(`Label "${COLLEGE_ADS_LABEL}" not found. Create it once in Gmail before running automation.`);
-  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  return false;
-}
-
-async function archiveSelectedThread() {
-  return clickToolbarButton([
-    /^archive$/,
-    /archive/
-  ]);
-}
-
-async function moveThreadToCollegeAds(row) {
-  if (isSafetyProtected(row)) return false;
-
-  const selected = selectThreadRow(row);
-  if (!selected) return false;
-
-  await wait(300);
-
-  const labeled = await applyCollegeAdsLabel();
-  if (!labeled) return false;
-
-  await wait(300);
-
-  const archived = await archiveSelectedThread();
-  return archived;
-}
-
-async function classifyThread(thread) {
-  return chrome.runtime.sendMessage({
-    type: "CLASSIFY_EMAIL",
-    payload: thread
-  });
-}
-
-async function scanInbox() {
-  const candidates = getUnreadUnprotectedThreads();
-
-  for (const { row, data } of candidates) {
-    processedThreadIds.add(data.threadId);
-
-    try {
-      const result = await classifyThread(data);
-
-      if (result?.classification === "JUNK") {
-        await moveThreadToCollegeAds(row);
-      }
-    } catch (error) {
-      console.error("College Ads Sorter classification failed:", error);
+    if (hasRelevantChange) {
+      scheduleScan();
+      scheduleAutoScan("gmail-dom-updated");
     }
-  }
-}
-
-function startListener() {
-  scanInbox();
-  setInterval(scanInbox, SCAN_INTERVAL_MS);
-
-  const observer = new MutationObserver(() => {
-    clearTimeout(window.__collegeAdsSorterScanTimer);
-    window.__collegeAdsSorterScanTimer = setTimeout(scanInbox, 1000);
   });
 
   observer.observe(document.body, {
     childList: true,
     subtree: true
   });
+
+  window.addEventListener("focus", () => {
+    scheduleScan();
+    scheduleAutoScan("gmail-focused");
+  });
+  window.addEventListener("hashchange", () => {
+    scheduleScan();
+    scheduleAutoScan("gmail-navigation");
+  });
+
+  console.log("[Inbox Noise Filter] Gmail DOM observer and continuous auto-scan started.");
 }
 
-startListener();
+startObserver();

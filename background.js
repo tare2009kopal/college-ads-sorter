@@ -1,67 +1,779 @@
-// background.js - BUILT-IN CHROME AI VERSION (No Servers, No Keys)
+﻿// background.js
+// Client-side Gmail classifier for Inbox Noise Filter / MailSift.
 
-const SYSTEM_PROMPT = `
-You are an email classification engine. You must evaluate the email metrics and output a single word answer: JUNK or KEEP.
+const GMAIL_API_BASE = "https://www.googleapis.com/gmail/v1/users/me";
+const COLLEGE_ADS_LABEL_NAME = "College Ads";
+const AUTO_SCAN_COOLDOWN_MS = 60 * 1000;
+const SCAN_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const MAX_REPORT_ITEMS = 40;
+const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus "student panel" "open house" "visit campus" technolutions scholarship "financial aid" "apply now"}' ;
 
-Return KEEP if the email is from official high school, testing, or college-application systems like Common App, College Board, ACT, SAT, Scoir, Naviance, FAFSA, CSS Profile, school district systems, or applicant portals.
-Return KEEP if it contains terms like Admission Decision, Application Received, Interview Scheduled, Portal Login, Verification, Missing Documents, Financial Aid, or Deadline Reminder.
-Return KEEP if it is a personal 1-to-1 thread with a real human admissions officer or counselor.
+const DEFAULT_SETTINGS = {
+  connected: false,
+  autoScanEnabled: true,
+  lastAutoScanAt: 0,
+  protectedTerms: [
+    "stanford bio-x",
+    "esfahani",
+    "radiation oncology",
+    "rad onc",
+    "rad_cancer_bio",
+    "affiliated labs",
+    "publication announcement",
+    "submit a poster",
+    "stanford university school of medicine"
+  ]
+};
 
-Return JUNK if it is a generic mass-marketing blast, promotional brochure, campus newsletter, virtual tour invitation, webinar invitation, open house advertisement, or broad college advertising email.
+const EMPTY_REPORT = {
+  lastRunAt: null,
+  lastSource: null,
+  scanned: 0,
+  moved: 0,
+  kept: 0,
+  protected: 0,
+  failed: 0,
+  skipped: 0,
+  candidates: 0,
+  durationMs: 0,
+  movedItems: [],
+  protectedItems: [],
+  keptItems: [],
+  failedItems: []
+};
 
-Output exactly one word: JUNK or KEEP. Do not include punctuation or explanations.
-`.trim();
+const COLLEGE_ORG_SIGNALS = [
+  "university",
+  "college",
+  "admission",
+  "admissions",
+  "undergraduate",
+  "office of admission",
+  "office of undergraduate admission",
+  "drexel",
+  "creighton",
+  "university of san francisco",
+  "usfca",
+  "tcu"
+];
 
-async function classifyEmail(email) {
-  // Check if Chrome's built-in AI language model is available
-  const capabilities = await ai.languageModel.capabilities();
-  if (capabilities.available === "no") {
-    throw new Error("Chrome built-in AI is not enabled or supported on this browser.");
-  }
+const COLLEGE_PROMO_SIGNALS = [
+  "why attend",
+  "urban school",
+  "urban institution",
+  "top three reasons",
+  "explore life",
+  "life in philly",
+  "virtual student panel",
+  "student panel",
+  "university ambassadors",
+  "sign up",
+  "campus",
+  "visit campus",
+  "visiting campus",
+  "tour",
+  "webinar",
+  "open house",
+  "learn more",
+  "discover",
+  "journey starts here",
+  "start exploring",
+  "bluejay",
+  "frog camp",
+  "best parts of college",
+  "applying",
+  "planning your next steps",
+  "admissions season",
+  "students in your area",
+  "current students",
+  "opportunity to hear directly",
+  "cooperative education",
+  "experiential education",
+  "majors",
+  "programs",
+  "scholarship",
+  "scholarships",
+  "financial aid"
+];
 
-  // Create a localized session with Gemini Nano inside the browser
-  const session = await ai.languageModel.create({
-    systemPrompt: SYSTEM_PROMPT,
-    temperature: 0
-  });
+const MARKETING_INFRASTRUCTURE_SIGNALS = [
+  "unsubscribe",
+  "you unsubscribed",
+  "technolutions",
+  "mx.technolutions.net",
+  "office of admission",
+  "office of undergraduate admissions",
+  "undergraduate programs"
+];
 
-  const promptText = `Sender: ${email.sender}\nSubject: ${email.subject}\nSnippet: ${email.snippet}`;
-  const rawResponse = await session.prompt(promptText);
-  
-  // Clean up the text response
-  const normalized = rawResponse.trim().toUpperCase();
-  session.destroy(); // Free up memory on the user's computer
+const KEEP_SIGNALS = [
+  "security alert",
+  "2-step verification",
+  "verification code",
+  "email verification",
+  "password reset",
+  "application received",
+  "admission decision",
+  "missing documents",
+  "portal login",
+  "fafsa",
+  "css profile",
+  "common app"
+];
 
+let cachedCollegeAdsLabelId = null;
+
+function storageGet(keys) {
+  return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+}
+
+function storageSet(values) {
+  return new Promise((resolve) => chrome.storage.local.set(values, resolve));
+}
+
+async function getSettings() {
+  const data = await storageGet(["settings"]);
   return {
-    classification: normalized.includes("JUNK") ? "JUNK" : "KEEP",
-    reason: "Processed locally via browser Gemini Nano."
+    ...DEFAULT_SETTINGS,
+    ...(data.settings || {}),
+    protectedTerms: Array.isArray(data.settings?.protectedTerms)
+      ? data.settings.protectedTerms
+      : DEFAULT_SETTINGS.protectedTerms
   };
 }
 
-// Listen for messages from content.js
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== "CLASSIFY_EMAIL") return false;
+async function saveSettings(nextSettings) {
+  const current = await getSettings();
+  const settings = { ...current, ...nextSettings };
+  await storageSet({ settings, scanCache: {} });
+  return settings;
+}
 
-  classifyEmail(message.payload)
-    .then(sendResponse)
-    .catch((error) => {
-      console.error("Local AI Error:", error);
-      sendResponse({
-        classification: "KEEP",
-        reason: "Local AI failed; defaulted to KEEP for safety."
-      });
+
+async function getScanCache() {
+  const data = await storageGet(["scanCache"]);
+  return data.scanCache || {};
+}
+
+async function saveScanCache(scanCache) {
+  const now = Date.now();
+  const pruned = {};
+
+  Object.entries(scanCache || {}).forEach(([messageId, entry]) => {
+    if (now - Number(entry.checkedAt || 0) < SCAN_CACHE_TTL_MS) {
+      pruned[messageId] = entry;
+    }
+  });
+
+  await storageSet({ scanCache: pruned });
+  return pruned;
+}
+
+function shouldSkipCachedMessage(messageId, scanCache) {
+  const entry = scanCache?.[messageId];
+  return Boolean(entry && Date.now() - Number(entry.checkedAt || 0) < SCAN_CACHE_TTL_MS);
+}
+
+function updateScanCache(scanCache, messageId, result) {
+  scanCache[messageId] = {
+    checkedAt: Date.now(),
+    moved: Boolean(result.moved),
+    protected: Boolean(result.protected),
+    reason: result.reason || ""
+  };
+}
+async function getReport() {
+  const data = await storageGet(["report"]);
+  return { ...EMPTY_REPORT, ...(data.report || {}) };
+}
+
+async function saveReport(report) {
+  const trimmed = {
+    ...report,
+    movedItems: (report.movedItems || []).slice(0, MAX_REPORT_ITEMS),
+    protectedItems: (report.protectedItems || []).slice(0, MAX_REPORT_ITEMS),
+    keptItems: (report.keptItems || []).slice(0, MAX_REPORT_ITEMS),
+    failedItems: (report.failedItems || []).slice(0, MAX_REPORT_ITEMS)
+  };
+  await storageSet({ report: trimmed });
+  return trimmed;
+}
+
+function getAuthToken(interactive = true) {
+  return new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive }, (tokenResult) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+
+      const token =
+        typeof tokenResult === "string" ? tokenResult : tokenResult?.token;
+
+      if (!token) {
+        reject(new Error("chrome.identity returned an empty OAuth token."));
+        return;
+      }
+
+      resolve(token);
     });
+  });
+}
 
-  return true;
+async function clearCachedAuthTokens() {
+  return new Promise((resolve) => chrome.identity.clearAllCachedAuthTokens(resolve));
+}
+
+async function gmailFetch(path, options = {}, authOptions = {}) {
+  const interactive = authOptions.interactive !== false;
+  const retryOnAuthFailure = authOptions.retryOnAuthFailure !== false;
+  const token = await getAuthToken(interactive);
+  const response = await fetch(`${GMAIL_API_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  if (response.status === 401 && retryOnAuthFailure) {
+    console.warn("[Inbox Noise Filter] OAuth token expired; retrying once.");
+    chrome.identity.removeCachedAuthToken({ token });
+    return gmailFetch(path, options, {
+      interactive,
+      retryOnAuthFailure: false
+    });
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Gmail API ${options.method || "GET"} ${path} failed: ` +
+        `${response.status} ${response.statusText} ${errorText}`
+    );
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+async function listLabels(authOptions = {}) {
+  console.log("[Inbox Noise Filter] Checking existing Gmail labels.");
+  const data = await gmailFetch("/labels", {}, authOptions);
+  return Array.isArray(data.labels) ? data.labels : [];
+}
+
+async function createCollegeAdsLabel(authOptions = {}) {
+  console.log("[Inbox Noise Filter] Creating Gmail label: College Ads.");
+  return gmailFetch(
+    "/labels",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: COLLEGE_ADS_LABEL_NAME,
+        labelListVisibility: "labelShow",
+        messageListVisibility: "show"
+      })
+    },
+    authOptions
+  );
+}
+
+async function getCollegeAdsLabelId(authOptions = {}) {
+  if (cachedCollegeAdsLabelId) {
+    return cachedCollegeAdsLabelId;
+  }
+
+  const labels = await listLabels(authOptions);
+  const existingLabel = labels.find(
+    (label) => label.name === COLLEGE_ADS_LABEL_NAME
+  );
+
+  if (existingLabel?.id) {
+    cachedCollegeAdsLabelId = existingLabel.id;
+    return cachedCollegeAdsLabelId;
+  }
+
+  const createdLabel = await createCollegeAdsLabel(authOptions);
+  if (!createdLabel?.id) {
+    throw new Error("Gmail label creation succeeded but returned no label ID.");
+  }
+
+  cachedCollegeAdsLabelId = createdLabel.id;
+  return cachedCollegeAdsLabelId;
+}
+
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function countSignals(text, signals) {
+  return signals.filter((signal) => text.includes(signal)).length;
+}
+
+function hasAnySignal(text, signals) {
+  return signals.some((signal) => text.includes(signal));
+}
+
+function getHeader(headers, name) {
+  const match = headers.find(
+    (header) => normalizeText(header.name) === normalizeText(name)
+  );
+  return match?.value || "";
+}
+
+function decodeBase64Url(data) {
+  if (!data) {
+    return "";
+  }
+
+  const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/gi, '"');
+}
+
+function extractPayloadText(payload) {
+  if (!payload) {
+    return "";
+  }
+
+  const currentPartText = decodeBase64Url(payload.body?.data || "");
+  const childText = Array.isArray(payload.parts)
+    ? payload.parts.map(extractPayloadText).join("\n")
+    : "";
+
+  return `${currentPartText}\n${childText}`;
+}
+
+async function getMessageDetails(messageId, authOptions = {}) {
+  const encodedMessageId = encodeURIComponent(messageId);
+  const message = await gmailFetch(
+    `/messages/${encodedMessageId}?format=full`,
+    {},
+    authOptions
+  );
+  const headers = message.payload?.headers || [];
+  const rawBody = extractPayloadText(message.payload);
+  const bodyText = stripHtml(rawBody);
+
+  return {
+    id: message.id,
+    labelIds: message.labelIds || [],
+    snippet: message.snippet || "",
+    from: getHeader(headers, "From"),
+    subject: getHeader(headers, "Subject"),
+    listUnsubscribe: getHeader(headers, "List-Unsubscribe"),
+    bodyText
+  };
+}
+
+function getCombinedText(details, rowSnapshot = {}) {
+  return normalizeText(
+    [
+      details.from,
+      details.subject,
+      details.snippet,
+      details.listUnsubscribe,
+      details.bodyText,
+      rowSnapshot.sender,
+      rowSnapshot.subject,
+      rowSnapshot.snippet
+    ].join(" ")
+  );
+}
+
+function itemSummary(details) {
+  return {
+    id: details.id,
+    from: details.from,
+    subject: details.subject,
+    snippet: details.snippet.slice(0, 180)
+  };
+}
+
+function findProtectedTerm(combinedText, settings) {
+  const terms = (settings.protectedTerms || [])
+    .map(normalizeText)
+    .filter(Boolean);
+  return terms.find((term) => combinedText.includes(term)) || "";
+}
+
+function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
+  const combinedText = getCombinedText(details, rowSnapshot);
+  const protectedTerm = findProtectedTerm(combinedText, settings);
+
+  if (protectedTerm) {
+    return {
+      shouldMove: false,
+      protected: true,
+      reason: `Matched protected term: ${protectedTerm}.`
+    };
+  }
+
+  if (hasAnySignal(combinedText, KEEP_SIGNALS)) {
+    return {
+      shouldMove: false,
+      protected: false,
+      reason: "Contains account/application safety signal."
+    };
+  }
+
+  const orgScore = countSignals(combinedText, COLLEGE_ORG_SIGNALS);
+  const promoScore = countSignals(combinedText, COLLEGE_PROMO_SIGNALS);
+  const infrastructureScore = countSignals(
+    combinedText,
+    MARKETING_INFRASTRUCTURE_SIGNALS
+  );
+  const fromLooksCollegeRelated = /@(.*\.)?(edu)\b/.test(
+    normalizeText(details.from)
+  );
+
+  const exactCampaignMatch = hasAnySignal(combinedText, [
+    "why attend an urban school",
+    "top three reasons to attend an urban institution",
+    "live virtual student panel",
+    "your creighton journey starts here"
+  ]);
+
+  const shouldMove =
+    exactCampaignMatch ||
+    (orgScore >= 1 && promoScore >= 2) ||
+    (fromLooksCollegeRelated && infrastructureScore >= 1 && promoScore >= 1) ||
+    (orgScore >= 1 && infrastructureScore >= 1 && promoScore >= 1);
+
+  return {
+    shouldMove,
+    protected: false,
+    reason: shouldMove
+      ? `Matched college promo content: org=${orgScore}, promo=${promoScore}, infra=${infrastructureScore}.`
+      : `Not enough college promo evidence: org=${orgScore}, promo=${promoScore}, infra=${infrastructureScore}.`
+  };
+}
+
+async function connectGmail() {
+  const labelId = await getCollegeAdsLabelId({ interactive: true });
+  const settings = await saveSettings({
+    connected: true,
+    connectedAt: new Date().toISOString()
+  });
+  console.log(`[Inbox Noise Filter] Gmail connected with label ${labelId}.`);
+  return { labelId, settings };
+}
+
+async function disconnectGmail() {
+  await clearCachedAuthTokens();
+  const settings = await saveSettings({ connected: false });
+  return { settings };
+}
+
+async function moveEmailToCollegeAds(messageId, authOptions = {}) {
+  if (!messageId || typeof messageId !== "string") {
+    throw new Error("A valid Gmail messageId string is required.");
+  }
+
+  const labelId = await getCollegeAdsLabelId(authOptions);
+  const encodedMessageId = encodeURIComponent(messageId);
+
+  return gmailFetch(
+    `/messages/${encodedMessageId}/modify`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        addLabelIds: [labelId],
+        removeLabelIds: ["INBOX"]
+      })
+    },
+    authOptions
+  );
+}
+
+async function analyzeAndMaybeMoveEmail(
+  messageId,
+  rowSnapshot = {},
+  authOptions = {},
+  settings = null
+) {
+  const activeSettings = settings || (await getSettings());
+  const details = await getMessageDetails(messageId, authOptions);
+  const classification = classifyCollegeAdEmail(
+    details,
+    activeSettings,
+    rowSnapshot
+  );
+
+  console.log("[Inbox Noise Filter] Full-message classification:", {
+    messageId,
+    from: details.from,
+    subject: details.subject,
+    shouldMove: classification.shouldMove,
+    protected: classification.protected,
+    reason: classification.reason
+  });
+
+  if (!classification.shouldMove) {
+    return {
+      moved: false,
+      protected: classification.protected,
+      reason: classification.reason,
+      item: itemSummary(details)
+    };
+  }
+
+  const modifiedMessage = await moveEmailToCollegeAds(messageId, authOptions);
+  return {
+    moved: true,
+    protected: false,
+    reason: classification.reason,
+    messageId: modifiedMessage?.id || messageId,
+    item: itemSummary(details)
+  };
+}
+
+async function listInboxMessages(pageToken = "", authOptions = {}, maxResults = 50) {
+  const query = encodeURIComponent(COLLEGE_AD_SEARCH_QUERY);
+  const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
+  return gmailFetch(
+    `/messages?q=${query}&maxResults=${maxResults}${pageParam}`,
+    {},
+    authOptions
+  );
+}
+
+async function scanInboxForCollegeAds(options = {}) {
+  const startedAt = Date.now();
+  const authOptions = { interactive: options.interactive !== false };
+  const settings = await getSettings();
+
+  if (!authOptions.interactive && !settings.connected) {
+    return {
+      ...EMPTY_REPORT,
+      lastRunAt: new Date().toISOString(),
+      lastSource: options.source || "auto",
+      triggerReason: options.reason || "",
+      skipped: 1,
+      skipReason: "Gmail is not connected yet."
+    };
+  }
+
+  await getCollegeAdsLabelId(authOptions);
+
+  let pageToken = "";
+  let scanCache = await getScanCache();
+  const report = {
+    ...EMPTY_REPORT,
+    lastRunAt: new Date().toISOString(),
+    lastSource: options.source || "manual",
+    triggerReason: options.reason || "",
+    query: COLLEGE_AD_SEARCH_QUERY
+  };
+  const maxPages = options.maxPages || 2;
+  const maxResults = options.maxResults || 40;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const pageData = await listInboxMessages(pageToken, authOptions, maxResults);
+    const messages = Array.isArray(pageData.messages) ? pageData.messages : [];
+    report.candidates += messages.length;
+
+    if (messages.length === 0) {
+      break;
+    }
+
+    for (const message of messages) {
+      if (shouldSkipCachedMessage(message.id, scanCache)) {
+        report.skipped += 1;
+        continue;
+      }
+
+      report.scanned += 1;
+
+      try {
+        const result = await analyzeAndMaybeMoveEmail(
+          message.id,
+          {},
+          authOptions,
+          settings
+        );
+        updateScanCache(scanCache, message.id, result);
+
+        if (result.moved) {
+          report.moved += 1;
+          report.movedItems.unshift({ ...result.item, reason: result.reason });
+        } else if (result.protected) {
+          report.kept += 1;
+          report.protected += 1;
+          report.protectedItems.unshift({ ...result.item, reason: result.reason });
+        } else {
+          report.kept += 1;
+          if (report.keptItems.length < 10) {
+            report.keptItems.unshift({ ...result.item, reason: result.reason });
+          }
+        }
+      } catch (error) {
+        report.failed += 1;
+        report.failedItems.unshift({ id: message.id, error: error.message });
+        console.error(
+          `[Inbox Noise Filter] Inbox scan failed for ${message.id}:`,
+          error
+        );
+      }
+    }
+
+    pageToken = pageData.nextPageToken || "";
+    if (!pageToken) {
+      break;
+    }
+  }
+
+  report.durationMs = Date.now() - startedAt;
+  scanCache = await saveScanCache(scanCache);
+  await saveReport(report);
+
+  if (options.source === "auto") {
+    const currentSettings = await getSettings();
+    await storageSet({
+      settings: {
+        ...currentSettings,
+        lastAutoScanAt: Date.now()
+      }
+    });
+  }
+
+  return report;
+}
+async function autoScanInbox(options = {}) {
+  const settings = await getSettings();
+  const now = Date.now();
+
+  if (!settings.connected || !settings.autoScanEnabled) {
+    return {
+      success: true,
+      skipped: 1,
+      skipReason: "Auto scan is off or Gmail is not connected."
+    };
+  }
+
+  if (now - Number(settings.lastAutoScanAt || 0) < AUTO_SCAN_COOLDOWN_MS) {
+    return {
+      success: true,
+      skipped: 1,
+      skipReason: "Auto scan cooldown is active."
+    };
+  }
+
+  const report = await scanInboxForCollegeAds({
+    interactive: false,
+    source: "auto",
+    reason: options.reason || "",
+    maxPages: 1,
+    maxResults: 25
+  });
+  return { success: true, ...report };
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.action === "openSetup") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+    sendResponse({ success: true });
+    return false;
+  }
+  if (message?.action === "getState") {
+    Promise.all([getSettings(), getReport()])
+      .then(([settings, report]) => sendResponse({ success: true, settings, report }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.action === "saveSettings") {
+    saveSettings(message.settings || {})
+      .then((settings) => sendResponse({ success: true, settings }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.action === "connectGmail") {
+    connectGmail()
+      .then((result) => sendResponse({ success: true, ...result }))
+      .catch((error) => {
+        console.error("[Inbox Noise Filter] Gmail connection failed:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message?.action === "disconnectGmail") {
+    disconnectGmail()
+      .then((result) => sendResponse({ success: true, ...result }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.action === "scanInbox") {
+    scanInboxForCollegeAds({ interactive: true, source: "manual", maxPages: 2, maxResults: 40 })
+      .then((result) => sendResponse({ success: true, ...result }))
+      .catch((error) => {
+        console.error("[Inbox Noise Filter] Inbox scan failed:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message?.action === "autoScanInbox") {
+    autoScanInbox({ reason: message.reason || "" })
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error("[Inbox Noise Filter] Auto scan failed:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message?.action === "analyzeEmail") {
+    analyzeAndMaybeMoveEmail(message.messageId, message.rowSnapshot, {
+      interactive: false
+    })
+      .then((result) => sendResponse({ success: true, ...result }))
+      .catch((error) => {
+        console.error("[Inbox Noise Filter] Unable to analyze email:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  return false;
 });
-
-// background.js - Lifecycle Listener for Onboarding
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === chrome.runtime.OnInstalledReason.INSTALL) {
-    // Automatically open the welcome.html page in a new browser tab upon installation
-    chrome.tabs.create({
-      url: chrome.runtime.getURL("welcome.html")
-    });
+    chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
+
+
+
+
+

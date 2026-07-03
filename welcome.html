@@ -1,33 +1,405 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Welcome to College Ads Sorter</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; line-height: 1.5; color: #333; }
-    h1 { color: #1a73e8; font-size: 24px; margin-bottom: 8px; }
-    p { margin-top: 0; color: #666; }
-    .card { background: #f8f9fa; border: 1px solid #dadce0; border-radius: 8px; padding: 20px; margin-top: 20px; }
-    ol { margin: 0; padding-left: 20px; }
-    li { margin-bottom: 12px; }
-    code { background: #e8eaed; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 14px; color: #202124; }
-    .badge { background: #e8f0fe; color: #1a73e8; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <h1>Thanks for installing College Ads Sorter!</h1>
-  <p>To protect your privacy and ensure this tool runs completely free forever, it utilizes your computer's built-in browser AI framework.</p>
-  
-  <div class="card">
-    <h3>One-Time Activation Required</h3>
-    <p>Because Google is still rolling this feature out, you must flip one quick developer switch in Chrome to enable the local AI core:</p>
-    <ol>
-      <li>Open a new tab and go to: <code>chrome://flags/</code></li>
-      <li>Search for the flag: <strong>"Prompt API for Gemini Nano"</strong></li>
-      <li>Change its dropdown setting from <em>Default</em> to <span class="badge">Enabled</span></li>
-      <li>Click the <strong>Relaunch</strong> button that pops up at the bottom of your screen.</li>
-    </ol>
-  </div>
-  
-  <p style="margin-top:24px; font-size:14px; text-align:center; color:#999;">Once Chrome restarts, open Gmail and watch your inbox clean itself!</p>
-</body>
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Set up MailSift</title>
+    <style>
+      :root {
+        --blue: #1a73e8;
+        --green: #137333;
+        --ink: #202124;
+        --muted: #5f6368;
+        --line: #dadce0;
+        --soft: #f8fafd;
+        --selected: #e8f0fe;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, sans-serif;
+        color: var(--ink);
+        background: #ffffff;
+      }
+
+      .shell {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 30px 24px 46px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .brand img {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+      }
+
+      h1, h2, h3, p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      .subhead {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .status-pill {
+        min-width: 154px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+      }
+
+      .intro {
+        margin-top: 28px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .intro h2 {
+        max-width: 820px;
+        font-size: 38px;
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      .intro p {
+        max-width: 720px;
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.5;
+      }
+
+      .wizard-shell {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 26px;
+        margin-top: 28px;
+      }
+
+      .progress {
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+
+      .progress-step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 38px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .progress-step.active {
+        background: var(--selected);
+        color: var(--blue);
+        font-weight: 700;
+      }
+
+      .progress-step.done {
+        color: var(--green);
+      }
+
+      .dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        font-size: 12px;
+        background: #ffffff;
+        flex: 0 0 auto;
+      }
+
+      .progress-step.active .dot {
+        border-color: var(--blue);
+      }
+
+      .progress-step.done .dot {
+        border-color: var(--green);
+      }
+
+      .panel {
+        min-height: 460px;
+        padding: 26px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #ffffff;
+      }
+
+      .eyebrow {
+        color: var(--blue);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0;
+      }
+
+      .question {
+        margin-top: 8px;
+        font-size: 26px;
+        line-height: 1.15;
+      }
+
+      .helper {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .answers {
+        display: grid;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .choice {
+        display: grid;
+        grid-template-columns: 20px minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: pointer;
+      }
+
+      .choice:hover {
+        border-color: var(--blue);
+      }
+
+      .choice input {
+        margin-top: 2px;
+      }
+
+      .choice strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .choice span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      textarea, input[type="text"] {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+      }
+
+      textarea {
+        min-height: 150px;
+        resize: vertical;
+      }
+
+      .field-block {
+        margin-top: 22px;
+      }
+
+      .hint {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .review {
+        display: grid;
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      .review-row {
+        padding: 13px;
+        border-radius: 8px;
+        background: var(--soft);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .review-row strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .button-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 10px;
+      }
+
+      button {
+        min-height: 40px;
+        border: 0;
+        border-radius: 7px;
+        padding: 0 15px;
+        background: var(--blue);
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: var(--green);
+      }
+
+      button.neutral {
+        background: #5f6368;
+      }
+
+      button.ghost {
+        border: 1px solid var(--line);
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.58;
+      }
+
+      #message {
+        min-height: 20px;
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      #message.success {
+        color: var(--green);
+      }
+
+      #message.error {
+        color: #b3261e;
+      }
+
+      @media (max-width: 820px) {
+        header {
+          display: block;
+        }
+
+        .status-pill {
+          margin-top: 16px;
+          text-align: left;
+        }
+
+        .intro h2 {
+          font-size: 30px;
+        }
+
+        .wizard-shell {
+          display: block;
+        }
+
+        .progress {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          margin-bottom: 18px;
+        }
+
+        .progress-step {
+          min-height: 32px;
+          padding: 6px;
+          font-size: 12px;
+        }
+
+        .panel {
+          min-height: auto;
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div class="brand">
+          <img src="icons/icon48.png" alt="">
+          <div>
+            <h1>MailSift</h1>
+            <p class="subhead">A quieter Gmail inbox for college admissions season.</p>
+          </div>
+        </div>
+        <div id="connectionStatus" class="status-pill">Not connected</div>
+      </header>
+
+      <section class="intro">
+        <h2>Move college-ad noise automatically. Keep the important stuff.</h2>
+        <p>MailSift scans Gmail on your device, moves broad admissions marketing into College Ads, and protects senders or topics you care about. Setup takes a few guided choices.</p>
+      </section>
+
+      <main class="wizard-shell">
+        <nav id="progress" class="progress" aria-label="Setup progress"></nav>
+
+        <section class="panel" aria-live="polite">
+          <div id="stepEyebrow" class="eyebrow"></div>
+          <h2 id="stepQuestion" class="question"></h2>
+          <p id="stepHelper" class="helper"></p>
+          <div id="stepContent"></div>
+
+          <div class="button-row">
+            <button id="backButton" class="ghost" type="button">Back</button>
+            <div class="button-group">
+              <button id="openGmailButton" class="neutral" type="button">Open Gmail</button>
+              <button id="nextButton" type="button">Next</button>
+            </div>
+          </div>
+
+          <div id="message" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+    <script src="welcome.js"></script>
+  </body>
 </html>

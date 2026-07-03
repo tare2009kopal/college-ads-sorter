@@ -1,21 +1,52 @@
-{
-  "manifest_version": 3,
-  "name": "College Ads Sorter",
-  "version": "1.0.0",
-  "description": "Classifies unread Gmail college marketing emails and moves junk to College Ads.",
-  "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": [
-    "https://mail.google.com/*",
-    "https://YOUR_CLASSIFIER_ENDPOINT_HOST/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://mail.google.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ]
+﻿{
+    "manifest_version":  3,
+    "name":  "MailSift",
+    "version":  "1.0.0",
+    "description":  "Filters college admissions noise from Gmail while protecting important school, test, scholarship, and lab emails.",
+    "permissions":  [
+                        "identity",
+                        "activeTab",
+                        "storage"
+                    ],
+    "host_permissions":  [
+                             "https://mail.google.com/*",
+                             "https://www.googleapis.com/*"
+                         ],
+    "oauth2":  {
+                   "client_id":  "1018584133702-v85j797mt7l8i3a9lvhmp56p69jn75ue.apps.googleusercontent.com",
+                   "scopes":  [
+                                  "https://www.googleapis.com/auth/gmail.modify"
+                              ]
+               },
+    "background":  {
+                       "service_worker":  "background.js"
+                   },
+    "content_scripts":  [
+                            {
+                                "matches":  [
+                                                "https://mail.google.com/*"
+                                            ],
+                                "js":  [
+                                           "content.js"
+                                       ],
+                                "run_at":  "document_idle"
+                            }
+                        ],
+    "action":  {
+                   "default_title":  "Inbox Lens",
+                   "default_popup":  "popup.html",
+                   "default_icon":  {
+                                        "16":  "icons/icon16.png",
+                                        "32":  "icons/icon32.png",
+                                        "48":  "icons/icon48.png",
+                                        "128":  "icons/icon128.png"
+                                    }
+               },
+    "icons":  {
+                  "16":  "icons/icon16.png",
+                  "32":  "icons/icon32.png",
+                  "48":  "icons/icon48.png",
+                  "128":  "icons/icon128.png"
+              },
+    "options_page":  "welcome.html"
 }

@@ -1,0 +1,260 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>MailSift</title>
+    <style>
+      :root {
+        --blue: #1a73e8;
+        --green: #137333;
+        --red: #b3261e;
+        --ink: #202124;
+        --muted: #5f6368;
+        --line: #dadce0;
+        --soft: #f8fafd;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        width: 380px;
+        margin: 0;
+        padding: 14px;
+        font-family: Arial, sans-serif;
+        color: var(--ink);
+        background: #ffffff;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      header img {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+      }
+
+      h1, p { margin: 0; }
+
+      h1 {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      p {
+        margin-top: 2px;
+        font-size: 12px;
+        line-height: 1.35;
+        color: var(--muted);
+      }
+
+      .status-card {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+      }
+
+      .status-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .pill {
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: #ffffff;
+        color: var(--muted);
+        font-size: 12px;
+        border: 1px solid var(--line);
+        white-space: nowrap;
+      }
+
+      .pill.on { color: var(--green); }
+      .pill.off { color: var(--red); }
+
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      button {
+        flex: 1;
+        min-height: 36px;
+        border: 0;
+        border-radius: 7px;
+        background: var(--blue);
+        color: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.secondary { background: var(--green); }
+      button.danger { background: var(--red); }
+      button.neutral { background: #5f6368; }
+      button.ghost { background: #ffffff; color: var(--ink); border: 1px solid var(--line); }
+      button:disabled { cursor: default; opacity: 0.55; }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .metric {
+        padding: 9px 6px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        text-align: center;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 18px;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .section-title {
+        margin-top: 14px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .item-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 8px;
+        max-height: 180px;
+        overflow: auto;
+      }
+
+      .item {
+        padding: 9px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .item strong {
+        display: block;
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .item small {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.3;
+      }
+
+      details {
+        margin-top: 12px;
+      }
+
+      summary {
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 80px;
+        margin-top: 8px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        resize: vertical;
+      }
+
+      label.toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      #status {
+        margin-top: 10px;
+        min-height: 18px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+
+      #status.success { color: var(--green); }
+      #status.error { color: var(--red); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon48.png" alt="">
+      <div>
+        <h1>MailSift</h1>
+        <p>Fast college-ad filtering for Gmail.</p>
+      </div>
+    </header>
+
+    <section class="status-card">
+      <div class="status-row">
+        <div>
+          <strong id="mainStatus">Loading...</strong>
+          <p id="lastScanText">Checking settings</p>
+        </div>
+        <div id="connectedPill" class="pill">Unknown</div>
+      </div>
+      <div class="row">
+        <button id="scanButton" class="secondary" type="button">Scan Now</button>
+        <button id="setupButton" class="ghost" type="button">Setup</button>
+      </div>
+      <div class="row">
+        <button id="connectButton" type="button">Connect Gmail</button>
+        <button id="disconnectButton" class="danger" type="button">Disable Permission</button>
+      </div>
+    </section>
+
+    <div class="metrics">
+      <div class="metric"><strong id="movedCount">0</strong><span>Moved</span></div>
+      <div class="metric"><strong id="protectedCount">0</strong><span>Protected</span></div>
+      <div class="metric"><strong id="checkedCount">0</strong><span>Checked</span></div>
+      <div class="metric"><strong id="skippedCount">0</strong><span>Cached</span></div>
+    </div>
+
+    <div id="reportSections"></div>
+
+    <details>
+      <summary>Preferences</summary>
+      <label class="toggle">
+        <input id="autoScanCheckbox" type="checkbox">
+        Keep scanning while Gmail is open
+      </label>
+      <textarea id="protectedTerms" placeholder="Protected senders or phrases, one per line"></textarea>
+      <div class="row">
+        <button id="saveSettingsButton" class="neutral" type="button">Save Preferences</button>
+      </div>
+    </details>
+
+    <div id="status" aria-live="polite"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>
