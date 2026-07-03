@@ -6,8 +6,8 @@ const COLLEGE_ADS_LABEL_NAME = "College Ads";
 const AUTO_SCAN_COOLDOWN_MS = 60 * 1000;
 const SCAN_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_REPORT_ITEMS = 40;
-const CLASSIFIER_VERSION = "2026-07-uchicago-application-campaigns";
-const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus "student panel" "open house" "visit campus" technolutions scholarship "financial aid" "apply now" "start your application" "create your account"}';
+const CLASSIFIER_VERSION = "2026-07-apply-today-campaigns";
+const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus "student panel" "open house" "visit campus" technolutions scholarship "financial aid" "apply now" "apply today" "start your application" "create your account"}';
 
 const DEFAULT_SETTINGS = {
   connected: false,
@@ -58,7 +58,10 @@ const COLLEGE_ORG_SIGNALS = [
   "tcu",
   "uchicago",
   "university of chicago",
-  "collegeadmissions@"
+  "collegeadmissions@",
+  "university of colorado boulder",
+  "colorado boulder",
+  "cu boulder"
 ];
 
 const COLLEGE_PROMO_SIGNALS = [
@@ -95,6 +98,9 @@ const COLLEGE_PROMO_SIGNALS = [
   "create your account",
   "start your application",
   "start your college applications",
+  "apply today",
+  "invites you",
+  "invites you to apply",
   "admissions cycle",
   "college admissions cycle",
   "supplemental essay prompts",
@@ -521,7 +527,9 @@ function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
     "today marks the beginning of the 2026-2027 uchicago admissions cycle",
     "start your college applications",
     "start your application",
-    "create your uchicago account"
+    "create your uchicago account",
+    "apply today",
+    "university of colorado boulder invites you"
   ]);
 
   const shouldMove =
@@ -836,6 +844,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
 
 
 

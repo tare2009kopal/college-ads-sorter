@@ -7,6 +7,7 @@ const STRONG_ROW_SIGNALS = [
   "admissions",
   "admission",
   "apply now",
+  "apply today",
   "prospectus",
   "virtually visit",
   "virtual visit",
@@ -37,7 +38,10 @@ const COLLEGE_ROW_SIGNALS = [
   "university of san francisco",
   "tcu",
   "uchicago",
-  "university of chicago"
+  "university of chicago",
+  "university of colorado boulder",
+  "colorado boulder",
+  "cu boulder"
 ];
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -343,6 +347,7 @@ function startObserver() {
 }
 
 startObserver();
+
 
 
 
