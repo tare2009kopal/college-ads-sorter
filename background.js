@@ -6,6 +6,7 @@ const COLLEGE_ADS_LABEL_NAME = "College Ads";
 const AUTO_SCAN_COOLDOWN_MS = 60 * 1000;
 const SCAN_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_REPORT_ITEMS = 40;
+const CLASSIFIER_VERSION = "2026-07-uchicago-application-campaigns";
 const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus "student panel" "open house" "visit campus" technolutions scholarship "financial aid" "apply now" "start your application" "create your account"}';
 
 const DEFAULT_SETTINGS = {
@@ -210,12 +211,17 @@ async function saveScanCache(scanCache) {
 
 function shouldSkipCachedMessage(messageId, scanCache) {
   const entry = scanCache?.[messageId];
-  return Boolean(entry && Date.now() - Number(entry.checkedAt || 0) < SCAN_CACHE_TTL_MS);
+  return Boolean(
+    entry &&
+      entry.classifierVersion === CLASSIFIER_VERSION &&
+      Date.now() - Number(entry.checkedAt || 0) < SCAN_CACHE_TTL_MS
+  );
 }
 
 function updateScanCache(scanCache, messageId, result) {
   scanCache[messageId] = {
     checkedAt: Date.now(),
+    classifierVersion: CLASSIFIER_VERSION,
     moved: Boolean(result.moved),
     protected: Boolean(result.protected),
     reason: result.reason || ""
@@ -830,6 +836,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
 
 
 
