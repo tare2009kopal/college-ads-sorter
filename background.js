@@ -3,11 +3,11 @@
 
 const GMAIL_API_BASE = "https://www.googleapis.com/gmail/v1/users/me";
 const COLLEGE_ADS_LABEL_NAME = "College Ads";
-const AUTO_SCAN_COOLDOWN_MS = 60 * 1000;
+const AUTO_SCAN_COOLDOWN_MS = 30 * 1000;
 const SCAN_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_REPORT_ITEMS = 40;
-const CLASSIFIER_VERSION = "2026-07-apply-today-campaigns";
-const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus "student panel" "open house" "visit campus" technolutions scholarship "financial aid" "apply now" "apply today" "start your application" "create your account"}';
+const CLASSIFIER_VERSION = "2026-07-broad-admissions-recruiting";
+const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus apply application applicant "apply now" "apply today" "start your application" "create your account" "request information" "visit campus" "student panel" "open house" "information session" "admissions counselor" "financial aid" scholarship technolutions}';
 
 const DEFAULT_SETTINGS = {
   connected: false,
@@ -49,8 +49,19 @@ const COLLEGE_ORG_SIGNALS = [
   "admission",
   "admissions",
   "undergraduate",
+  "first-year",
+  "freshman",
+  "prospective student",
+  "future student",
   "office of admission",
+  "office of admissions",
   "office of undergraduate admission",
+  "office of undergraduate admissions",
+  "admissions@",
+  "admission@",
+  "collegeadmissions@",
+  "enroll@",
+  "apply@",
   "drexel",
   "creighton",
   "university of san francisco",
@@ -58,73 +69,154 @@ const COLLEGE_ORG_SIGNALS = [
   "tcu",
   "uchicago",
   "university of chicago",
-  "collegeadmissions@",
   "university of colorado boulder",
   "colorado boulder",
   "cu boulder"
 ];
 
-const COLLEGE_PROMO_SIGNALS = [
+const ADMISSIONS_INTENT_SIGNALS = [
+  "apply today",
+  "apply now",
+  "apply by",
+  "apply to",
+  "apply for admission",
+  "apply for admissions",
+  "start your application",
+  "start an application",
+  "start applying",
+  "start your college application",
+  "start your college applications",
+  "complete your application",
+  "submit your application",
+  "application is open",
+  "applications are open",
+  "applications open",
+  "application opens",
+  "application deadline",
+  "priority deadline",
+  "early action",
+  "early decision",
+  "regular decision",
+  "create your account",
+  "set up your account",
+  "activate your account",
+  "uchicago account",
+  "applicant account",
+  "application portal",
+  "applicant portal",
+  "admissions portal",
+  "getstarted",
+  "request information",
+  "request info",
+  "join our mailing list",
+  "admissions cycle",
+  "college admissions cycle",
+  "supplemental essay prompts",
+  "supplemental materials",
+  "admissions counselor",
+  "admission counselor",
+  "connect with your counselor",
+  "invites you to apply",
+  "invited to apply",
+  "you are invited to apply"
+];
+
+const COLLEGE_RECRUITING_SIGNALS = [
   "why attend",
+  "why choose",
+  "why students choose",
   "urban school",
   "urban institution",
   "top three reasons",
   "explore life",
   "life in philly",
-  "virtual student panel",
-  "student panel",
-  "university ambassadors",
-  "sign up",
-  "campus",
+  "campus life",
+  "student life",
   "visit campus",
-  "visiting campus",
-  "tour",
-  "webinar",
+  "visit us",
+  "visit day",
+  "campus visit",
+  "campus tour",
+  "tour campus",
+  "schedule a visit",
+  "virtually visit",
+  "virtual visit",
+  "virtual tour",
   "open house",
+  "information session",
+  "info session",
+  "admitted student",
+  "student panel",
+  "virtual student panel",
+  "student ambassador",
+  "university ambassadors",
+  "meet current students",
+  "current students",
+  "student stories",
+  "webinar",
+  "sign up",
+  "register now",
+  "reserve your spot",
+  "save your spot",
   "learn more",
   "discover",
+  "explore",
+  "see yourself",
+  "picture yourself",
   "journey starts here",
   "start exploring",
-  "bluejay",
-  "frog camp",
-  "best parts of college",
-  "applying",
+  "your future starts",
+  "next steps",
   "planning your next steps",
-  "admissions season",
   "students in your area",
-  "current students",
   "opportunity to hear directly",
   "looking for a sign",
-  "create your account",
-  "start your application",
-  "start your college applications",
-  "apply today",
-  "invites you",
-  "invites you to apply",
-  "admissions cycle",
-  "college admissions cycle",
-  "supplemental essay prompts",
-  "supplemental materials",
-  "set up your account",
-  "getstarted",
-  "admissions counselor",
-  "cooperative education",
-  "experiential education",
+  "one step closer",
+  "college search",
+  "find your fit",
   "majors",
   "programs",
+  "academic programs",
+  "undergraduate programs",
   "scholarship",
   "scholarships",
-  "financial aid"
+  "financial aid",
+  "tuition",
+  "affordability",
+  "frog camp",
+  "bluejay",
+  "cooperative education",
+  "experiential education"
 ];
 
 const MARKETING_INFRASTRUCTURE_SIGNALS = [
   "unsubscribe",
   "you unsubscribed",
+  "manage preferences",
+  "email preferences",
+  "view this email in your browser",
   "technolutions",
   "mx.technolutions.net",
+  "slate",
   "office of admission",
+  "office of admissions",
+  "office of undergraduate admission",
   "office of undergraduate admissions",
   "undergraduate programs"
+];
+
+const HIGH_CONFIDENCE_CAMPAIGN_SIGNALS = [
+  "why attend an urban school",
+  "top three reasons to attend an urban institution",
+  "live virtual student panel",
+  "your creighton journey starts here",
+  "looking for a sign",
+  "you can now create your uchicago account",
+  "today marks the beginning of the 2026-2027 uchicago admissions cycle",
+  "start your college applications",
+  "create your uchicago account",
+  "university of colorado boulder invites you",
+  "apply today"
 ];
 
 const KEEP_SIGNALS = [
@@ -134,8 +226,15 @@ const KEEP_SIGNALS = [
   "email verification",
   "password reset",
   "application received",
+  "we received your application",
+  "your application has been received",
   "missing documents",
-  "portal login"
+  "decision available",
+  "view your decision",
+  "portal login",
+  "ap classroom",
+  "college board",
+  "score report"
 ];
 
 const BROAD_PROTECTED_TERMS = [
@@ -508,42 +607,31 @@ function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
   }
 
   const orgScore = countSignals(combinedText, COLLEGE_ORG_SIGNALS);
-  const promoScore = countSignals(combinedText, COLLEGE_PROMO_SIGNALS);
+  const intentScore = countSignals(combinedText, ADMISSIONS_INTENT_SIGNALS);
+  const recruitingScore = countSignals(combinedText, COLLEGE_RECRUITING_SIGNALS);
   const infrastructureScore = countSignals(
     combinedText,
     MARKETING_INFRASTRUCTURE_SIGNALS
   );
-  const fromLooksCollegeRelated = /@(.*\.)?(edu)\b/.test(
-    normalizeText(details.from)
-  );
-
-  const exactCampaignMatch = hasAnySignal(combinedText, [
-    "why attend an urban school",
-    "top three reasons to attend an urban institution",
-    "live virtual student panel",
-    "your creighton journey starts here",
-    "looking for a sign",
-    "you can now create your uchicago account",
-    "today marks the beginning of the 2026-2027 uchicago admissions cycle",
-    "start your college applications",
-    "start your application",
-    "create your uchicago account",
-    "apply today",
-    "university of colorado boulder invites you"
-  ]);
+  const fromText = normalizeText(details.from);
+  const fromLooksCollegeRelated = /@(.*\.)?(edu)\b/.test(fromText);
+  const fromLooksAdmissionsRelated = /(admission|admissions|enroll|apply|undergraduate)/.test(fromText);
+  const exactCampaignMatch = hasAnySignal(combinedText, HIGH_CONFIDENCE_CAMPAIGN_SIGNALS);
 
   const shouldMove =
     exactCampaignMatch ||
-    (orgScore >= 1 && promoScore >= 2) ||
-    (fromLooksCollegeRelated && infrastructureScore >= 1 && promoScore >= 1) ||
-    (orgScore >= 1 && infrastructureScore >= 1 && promoScore >= 1);
+    (orgScore >= 1 && intentScore >= 1) ||
+    (fromLooksAdmissionsRelated && (intentScore >= 1 || recruitingScore >= 1)) ||
+    (fromLooksCollegeRelated && orgScore >= 1 && intentScore >= 1) ||
+    (orgScore >= 2 && recruitingScore >= 1 && infrastructureScore >= 1) ||
+    (orgScore >= 1 && recruitingScore >= 2 && infrastructureScore >= 1);
 
   return {
     shouldMove,
     protected: false,
     reason: shouldMove
-      ? `Matched college promo content: org=${orgScore}, promo=${promoScore}, infra=${infrastructureScore}.`
-      : `Not enough college promo evidence: org=${orgScore}, promo=${promoScore}, infra=${infrastructureScore}.`
+      ? `Matched admissions campaign: org=${orgScore}, intent=${intentScore}, recruiting=${recruitingScore}, infra=${infrastructureScore}.`
+      : `Not enough admissions campaign evidence: org=${orgScore}, intent=${intentScore}, recruiting=${recruitingScore}, infra=${infrastructureScore}.`
   };
 }
 
@@ -844,6 +932,8 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
+
 
 
 

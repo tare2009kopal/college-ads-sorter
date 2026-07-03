@@ -8,22 +8,32 @@ const STRONG_ROW_SIGNALS = [
   "admission",
   "apply now",
   "apply today",
-  "prospectus",
-  "virtually visit",
-  "virtual visit",
-  "financial aid",
+  "apply by",
+  "start your application",
+  "create your account",
+  "request information",
+  "request info",
+  "application is open",
+  "applications are open",
+  "admissions cycle",
+  "admissions counselor",
+  "supplemental essay prompts",
+  "visit campus",
   "campus tour",
   "open house",
   "information session",
-  "why attend",
+  "info session",
   "student panel",
+  "virtually visit",
+  "virtual visit",
+  "financial aid",
+  "scholarship",
+  "prospectus",
+  "why attend",
   "journey starts",
-  "frog camp",
-  "create your account",
-  "start your application",
-  "admissions cycle",
-  "supplemental essay prompts",
-  "admissions counselor"
+  "invites you",
+  "invited to apply",
+  "frog camp"
 ];
 
 const COLLEGE_ROW_SIGNALS = [
@@ -32,6 +42,9 @@ const COLLEGE_ROW_SIGNALS = [
   "admission",
   "admissions",
   "undergraduate",
+  "prospective student",
+  "future student",
+  "office of admission",
   "drexel",
   "creighton",
   "usf",
@@ -45,8 +58,8 @@ const COLLEGE_ROW_SIGNALS = [
 ];
 
 const SCAN_DEBOUNCE_MS = 350;
-const AUTO_SCAN_INTERVAL_MS = 60 * 1000;
-const AUTO_SCAN_MUTATION_DEBOUNCE_MS = 8000;
+const AUTO_SCAN_INTERVAL_MS = 30 * 1000;
+const AUTO_SCAN_MUTATION_DEBOUNCE_MS = 4000;
 const ROW_HIDDEN_CLASS = "inbox-noise-filter-hidden";
 
 const processedMessageIds = new Set();
@@ -347,6 +360,7 @@ function startObserver() {
 }
 
 startObserver();
+
 
 
 

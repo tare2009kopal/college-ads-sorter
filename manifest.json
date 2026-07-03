@@ -1,7 +1,7 @@
 ﻿{
     "manifest_version":  3,
     "name":  "MailSift",
-    "version":  "1.0.2",
+    "version":  "1.0.3",
     "description":  "Filters college admissions noise from Gmail while protecting important school, test, scholarship, and lab emails.",
     "permissions":  [
                         "identity",
