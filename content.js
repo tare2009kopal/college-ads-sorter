@@ -17,7 +17,12 @@ const STRONG_ROW_SIGNALS = [
   "why attend",
   "student panel",
   "journey starts",
-  "frog camp"
+  "frog camp",
+  "create your account",
+  "start your application",
+  "admissions cycle",
+  "supplemental essay prompts",
+  "admissions counselor"
 ];
 
 const COLLEGE_ROW_SIGNALS = [
@@ -30,7 +35,9 @@ const COLLEGE_ROW_SIGNALS = [
   "creighton",
   "usf",
   "university of san francisco",
-  "tcu"
+  "tcu",
+  "uchicago",
+  "university of chicago"
 ];
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -336,3 +343,6 @@ function startObserver() {
 }
 
 startObserver();
+
+
+

@@ -6,7 +6,7 @@ const COLLEGE_ADS_LABEL_NAME = "College Ads";
 const AUTO_SCAN_COOLDOWN_MS = 60 * 1000;
 const SCAN_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_REPORT_ITEMS = 40;
-const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus "student panel" "open house" "visit campus" technolutions scholarship "financial aid" "apply now"}' ;
+const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus "student panel" "open house" "visit campus" technolutions scholarship "financial aid" "apply now" "start your application" "create your account"}';
 
 const DEFAULT_SETTINGS = {
   connected: false,
@@ -54,7 +54,10 @@ const COLLEGE_ORG_SIGNALS = [
   "creighton",
   "university of san francisco",
   "usfca",
-  "tcu"
+  "tcu",
+  "uchicago",
+  "university of chicago",
+  "collegeadmissions@"
 ];
 
 const COLLEGE_PROMO_SIGNALS = [
@@ -87,6 +90,17 @@ const COLLEGE_PROMO_SIGNALS = [
   "students in your area",
   "current students",
   "opportunity to hear directly",
+  "looking for a sign",
+  "create your account",
+  "start your application",
+  "start your college applications",
+  "admissions cycle",
+  "college admissions cycle",
+  "supplemental essay prompts",
+  "supplemental materials",
+  "set up your account",
+  "getstarted",
+  "admissions counselor",
   "cooperative education",
   "experiential education",
   "majors",
@@ -113,12 +127,37 @@ const KEEP_SIGNALS = [
   "email verification",
   "password reset",
   "application received",
-  "admission decision",
   "missing documents",
-  "portal login",
+  "portal login"
+];
+
+const BROAD_PROTECTED_TERMS = [
+  "common app",
+  "common application",
+  "coalition application",
+  "questbridge",
   "fafsa",
   "css profile",
-  "common app"
+  "financial aid",
+  "financial aid portal",
+  "application portal",
+  "applicant portal",
+  "admission decision",
+  "application deadline"
+];
+
+const TRANSACTIONAL_KEEP_CONTEXT = [
+  "application received",
+  "we received your application",
+  "your application has been received",
+  "missing documents",
+  "action required",
+  "status update",
+  "decision available",
+  "view your decision",
+  "portal login",
+  "password reset",
+  "verification code"
 ];
 
 let cachedCollegeAdsLabelId = null;
@@ -422,11 +461,25 @@ function findProtectedTerm(combinedText, settings) {
   return terms.find((term) => combinedText.includes(term)) || "";
 }
 
+function isBroadProtectedTerm(term) {
+  return BROAD_PROTECTED_TERMS.some(
+    (broadTerm) => term === broadTerm || term.includes(broadTerm)
+  );
+}
+
+function shouldHonorProtectedTerm(term, combinedText) {
+  if (!isBroadProtectedTerm(term)) {
+    return true;
+  }
+
+  return hasAnySignal(combinedText, TRANSACTIONAL_KEEP_CONTEXT);
+}
+
 function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
   const combinedText = getCombinedText(details, rowSnapshot);
   const protectedTerm = findProtectedTerm(combinedText, settings);
 
-  if (protectedTerm) {
+  if (protectedTerm && shouldHonorProtectedTerm(protectedTerm, combinedText)) {
     return {
       shouldMove: false,
       protected: true,
@@ -456,7 +509,13 @@ function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
     "why attend an urban school",
     "top three reasons to attend an urban institution",
     "live virtual student panel",
-    "your creighton journey starts here"
+    "your creighton journey starts here",
+    "looking for a sign",
+    "you can now create your uchicago account",
+    "today marks the beginning of the 2026-2027 uchicago admissions cycle",
+    "start your college applications",
+    "start your application",
+    "create your uchicago account"
   ]);
 
   const shouldMove =
@@ -771,6 +830,8 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
+
 
 
 

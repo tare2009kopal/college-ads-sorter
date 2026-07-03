@@ -72,7 +72,7 @@ const CATEGORY_TERMS = {
 
 const state = {
   autoScanEnabled: true,
-  protectedCategories: ["testing", "applications", "counseling", "research"],
+  protectedCategories: ["testing", "counseling", "research"],
   protectedColleges: "",
   customTerms: ""
 };
@@ -449,3 +449,4 @@ init().catch((error) => {
   setMessage(error.message, "error");
   renderStep();
 });
+
