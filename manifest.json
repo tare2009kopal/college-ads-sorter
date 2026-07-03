@@ -1,7 +1,7 @@
 ﻿{
     "manifest_version":  3,
     "name":  "MailSift",
-    "version":  "1.0.4",
+    "version":  "1.0.5",
     "description":  "Filters college admissions noise from Gmail while protecting important school, test, scholarship, and lab emails.",
     "permissions":  [
                         "identity",
@@ -13,7 +13,7 @@
                              "https://www.googleapis.com/*"
                          ],
     "oauth2":  {
-                   "client_id":  "1018584133702-v85j797mt7l8i3a9lvhmp56p69jn75ue.apps.googleusercontent.com",
+                   "client_id":  "1018584133702-etrf4v99j720g0eqquko6e5tk8vsggdu.apps.googleusercontent.com",
                    "scopes":  [
                                   "https://www.googleapis.com/auth/gmail.modify"
                               ]
