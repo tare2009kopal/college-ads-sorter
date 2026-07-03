@@ -76,6 +76,11 @@ const COLLEGE_ORG_SIGNALS = [
 
 const ADMISSIONS_INTENT_SIGNALS = [
   "apply today",
+  "buckeye preview day",
+  "undergraduate admission",
+  "is college worth it",
+  "start the path to your future",
+  "university of colorado boulder invites you",
   "apply now",
   "apply by",
   "apply to",
@@ -118,7 +123,9 @@ const ADMISSIONS_INTENT_SIGNALS = [
   "connect with your counselor",
   "invites you to apply",
   "invited to apply",
-  "you are invited to apply"
+  "you are invited to apply",
+  "you are invited",
+  "you're invited"
 ];
 
 const COLLEGE_RECRUITING_SIGNALS = [
@@ -135,6 +142,8 @@ const COLLEGE_RECRUITING_SIGNALS = [
   "visit campus",
   "visit us",
   "visit day",
+  "preview day",
+  "admissions preview",
   "campus visit",
   "campus tour",
   "tour campus",
@@ -171,6 +180,14 @@ const COLLEGE_RECRUITING_SIGNALS = [
   "students in your area",
   "opportunity to hear directly",
   "looking for a sign",
+  "is college worth it",
+  "big picture",
+  "preparing for a job",
+  "start the path",
+  "path to your future",
+  "your future",
+  "our community",
+  "shaped me",
   "one step closer",
   "college search",
   "find your fit",
@@ -211,12 +228,25 @@ const HIGH_CONFIDENCE_CAMPAIGN_SIGNALS = [
   "live virtual student panel",
   "your creighton journey starts here",
   "looking for a sign",
+  "is college worth it",
+  "big picture",
+  "preparing for a job",
+  "start the path",
+  "path to your future",
+  "your future",
+  "our community",
+  "shaped me",
   "you can now create your uchicago account",
   "today marks the beginning of the 2026-2027 uchicago admissions cycle",
   "start your college applications",
   "create your uchicago account",
   "university of colorado boulder invites you",
-  "apply today"
+  "apply today",
+  "buckeye preview day",
+  "undergraduate admission",
+  "is college worth it",
+  "start the path to your future",
+  "university of colorado boulder invites you"
 ];
 
 const KEEP_SIGNALS = [
@@ -753,6 +783,12 @@ async function scanInboxForCollegeAds(options = {}) {
   };
   const maxPages = options.maxPages || 2;
   const maxResults = options.maxResults || 40;
+  const forceRefresh = Boolean(options.forceRefresh);
+
+  if (forceRefresh) {
+    console.log("[Inbox Noise Filter] Force refresh scan requested; ignoring scan cache.");
+    scanCache = {};
+  }
 
   for (let page = 0; page < maxPages; page += 1) {
     const pageData = await listInboxMessages(pageToken, authOptions, maxResults);
@@ -764,7 +800,7 @@ async function scanInboxForCollegeAds(options = {}) {
     }
 
     for (const message of messages) {
-      if (shouldSkipCachedMessage(message.id, scanCache)) {
+      if (!forceRefresh && shouldSkipCachedMessage(message.id, scanCache)) {
         report.skipped += 1;
         continue;
       }
@@ -893,7 +929,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.action === "scanInbox") {
-    scanInboxForCollegeAds({ interactive: true, source: "manual", maxPages: 2, maxResults: 40 })
+    scanInboxForCollegeAds({ interactive: true, source: "manual", maxPages: 2, maxResults: 40, forceRefresh: true })
       .then((result) => sendResponse({ success: true, ...result }))
       .catch((error) => {
         console.error("[Inbox Noise Filter] Inbox scan failed:", error);
@@ -932,6 +968,9 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
+
+
 
 
 

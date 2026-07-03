@@ -32,6 +32,12 @@ const STRONG_ROW_SIGNALS = [
   "why attend",
   "journey starts",
   "invites you",
+  "you're invited",
+  "preview day",
+  "college worth it",
+  "big picture",
+  "start the path",
+  "path to your future",
   "invited to apply",
   "frog camp"
 ];
@@ -360,6 +366,7 @@ function startObserver() {
 }
 
 startObserver();
+
 
 
 
