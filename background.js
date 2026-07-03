@@ -6,7 +6,7 @@ const COLLEGE_ADS_LABEL_NAME = "College Ads";
 const AUTO_SCAN_COOLDOWN_MS = 30 * 1000;
 const SCAN_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_REPORT_ITEMS = 40;
-const CLASSIFIER_VERSION = "2026-07-broad-admissions-recruiting";
+const CLASSIFIER_VERSION = "2026-07-protection-after-admissions-score";
 const COLLEGE_AD_SEARCH_QUERY = 'in:inbox newer_than:180d {university college admissions admission undergraduate campus apply application applicant "apply now" "apply today" "start your application" "create your account" "request information" "visit campus" "student panel" "open house" "information session" "admissions counselor" "financial aid" scholarship technolutions}';
 
 const DEFAULT_SETTINGS = {
@@ -619,23 +619,6 @@ function shouldHonorProtectedTerm(term, combinedText) {
 function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
   const combinedText = getCombinedText(details, rowSnapshot);
   const protectedTerm = findProtectedTerm(combinedText, settings);
-
-  if (protectedTerm && shouldHonorProtectedTerm(protectedTerm, combinedText)) {
-    return {
-      shouldMove: false,
-      protected: true,
-      reason: `Matched protected term: ${protectedTerm}.`
-    };
-  }
-
-  if (hasAnySignal(combinedText, KEEP_SIGNALS)) {
-    return {
-      shouldMove: false,
-      protected: false,
-      reason: "Contains account/application safety signal."
-    };
-  }
-
   const orgScore = countSignals(combinedText, COLLEGE_ORG_SIGNALS);
   const intentScore = countSignals(combinedText, ADMISSIONS_INTENT_SIGNALS);
   const recruitingScore = countSignals(combinedText, COLLEGE_RECRUITING_SIGNALS);
@@ -656,6 +639,22 @@ function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
     (orgScore >= 2 && recruitingScore >= 1 && infrastructureScore >= 1) ||
     (orgScore >= 1 && recruitingScore >= 2 && infrastructureScore >= 1);
 
+  if (protectedTerm && shouldHonorProtectedTerm(protectedTerm, combinedText) && !shouldMove) {
+    return {
+      shouldMove: false,
+      protected: true,
+      reason: `Matched protected term: ${protectedTerm}.`
+    };
+  }
+
+  if (hasAnySignal(combinedText, KEEP_SIGNALS) && !shouldMove) {
+    return {
+      shouldMove: false,
+      protected: false,
+      reason: "Contains account/application safety signal."
+    };
+  }
+
   return {
     shouldMove,
     protected: false,
@@ -664,7 +663,6 @@ function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
       : `Not enough admissions campaign evidence: org=${orgScore}, intent=${intentScore}, recruiting=${recruitingScore}, infra=${infrastructureScore}.`
   };
 }
-
 async function connectGmail() {
   const labelId = await getCollegeAdsLabelId({ interactive: true });
   const settings = await saveSettings({
@@ -968,6 +966,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
 
 
 
