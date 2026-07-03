@@ -282,6 +282,62 @@ const BROAD_PROTECTED_TERMS = [
   "application deadline"
 ];
 
+const BODY_SAFE_PROTECTED_TERMS = [
+  "stanford bio-x",
+  "esfahani",
+  "radiation oncology",
+  "rad onc",
+  "rad_cancer_bio",
+  "affiliated labs",
+  "publication announcement",
+  "submit a poster",
+  "stanford university school of medicine",
+  "research group",
+  "internship"
+];
+
+const HEADER_ONLY_PROTECTED_TERMS = [
+  "college board",
+  "ap classroom",
+  "advanced placement",
+  "bluebook",
+  "score report",
+  "school counselor",
+  "college counselor",
+  "guidance counselor",
+  "naviance",
+  "scoir",
+  "cialfo",
+  "school district",
+  "counseling office",
+  "common app",
+  "coalition application",
+  "fafsa",
+  "css profile",
+  "application portal",
+  "applicant portal",
+  "financial aid portal",
+  "scholarship finalist",
+  "scholarship award",
+  "merit scholarship",
+  "competition finalist",
+  "national merit",
+  "questbridge",
+  "coca-cola scholars",
+  "gates scholarship"
+];
+
+const GENERIC_PROTECTED_WORDS = [
+  "college",
+  "university",
+  "admission",
+  "admissions",
+  "application",
+  "school",
+  "counselor",
+  "scholarship",
+  "financial aid"
+];
 const TRANSACTIONAL_KEEP_CONTEXT = [
   "application received",
   "we received your application",
@@ -595,11 +651,82 @@ function itemSummary(details) {
   };
 }
 
-function findProtectedTerm(combinedText, settings) {
+function isBodySafeProtectedTerm(term) {
+  return BODY_SAFE_PROTECTED_TERMS.some(
+    (safeTerm) => term === safeTerm || term.includes(safeTerm)
+  );
+}
+
+function isHeaderOnlyProtectedTerm(term) {
+  return HEADER_ONLY_PROTECTED_TERMS.some(
+    (headerTerm) => term === headerTerm || term.includes(headerTerm)
+  );
+}
+
+function hasGenericProtectedWord(term) {
+  return GENERIC_PROTECTED_WORDS.some(
+    (word) => term === word || term.includes(word)
+  );
+}
+
+function getProtectedHeaderText(details, rowSnapshot = {}) {
+  return normalizeText(
+    [
+      details.from,
+      details.subject,
+      details.snippet,
+      rowSnapshot.sender,
+      rowSnapshot.subject,
+      rowSnapshot.snippet
+    ].join(" ")
+  );
+}
+
+function matchesProtectedTerm(term, details, rowSnapshot = {}) {
+  const headerText = getProtectedHeaderText(details, rowSnapshot);
+  const senderText = normalizeText([details.from, rowSnapshot.sender].join(" "));
+  const subjectText = normalizeText([details.subject, rowSnapshot.subject].join(" "));
+  const combinedText = getCombinedText(details, rowSnapshot);
+
+  if (!term || term.length < 3) {
+    return false;
+  }
+
+  if (term === "college board") {
+    return (
+      senderText.includes("college board") ||
+      senderText.includes("collegeboard") ||
+      senderText.includes("collegeboard.org") ||
+      subjectText.includes("college board")
+    );
+  }
+
+  if (["school counselor", "college counselor", "guidance counselor", "counseling office"].includes(term)) {
+    return (
+      headerText.includes(term) ||
+      senderText.includes("counsel") ||
+      senderText.includes("guidance") ||
+      subjectText.includes("counsel") ||
+      subjectText.includes("guidance")
+    );
+  }
+
+  if (isHeaderOnlyProtectedTerm(term) || hasGenericProtectedWord(term)) {
+    return headerText.includes(term);
+  }
+
+  if (isBodySafeProtectedTerm(term)) {
+    return combinedText.includes(term);
+  }
+
+  return headerText.includes(term);
+}
+
+function findProtectedTerm(details, rowSnapshot, settings) {
   const terms = (settings.protectedTerms || [])
     .map(normalizeText)
     .filter(Boolean);
-  return terms.find((term) => combinedText.includes(term)) || "";
+  return terms.find((term) => matchesProtectedTerm(term, details, rowSnapshot)) || "";
 }
 
 function isBroadProtectedTerm(term) {
@@ -618,7 +745,7 @@ function shouldHonorProtectedTerm(term, combinedText) {
 
 function classifyCollegeAdEmail(details, settings, rowSnapshot = {}) {
   const combinedText = getCombinedText(details, rowSnapshot);
-  const protectedTerm = findProtectedTerm(combinedText, settings);
+  const protectedTerm = findProtectedTerm(details, rowSnapshot, settings);
   const orgScore = countSignals(combinedText, COLLEGE_ORG_SIGNALS);
   const intentScore = countSignals(combinedText, ADMISSIONS_INTENT_SIGNALS);
   const recruitingScore = countSignals(combinedText, COLLEGE_RECRUITING_SIGNALS);
@@ -966,6 +1093,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
   }
 });
+
 
 
 
